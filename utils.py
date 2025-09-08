@@ -47,6 +47,7 @@ class ActionNormalizer():
 
         return action
 
+class OutputParser(DeviceParams):  
     
     def __init__(self, CktGraph):
         self.ckt_hierarchy = CktGraph.ckt_hierarchy 

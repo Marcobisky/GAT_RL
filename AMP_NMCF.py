@@ -169,8 +169,8 @@ class AMPNMCFEnv(gym.Env, CktGraph, DeviceParams):
 
 
         action = ActionNormalizer(
-            action_space_low=self.action_space_low, 
-            action_space_high=self.action_space_high
+            self.action_space_low, 
+            self.action_space_high
         ).action(action)
         action = action.astype(object)
         
@@ -427,8 +427,8 @@ class AMPNMCFEnv(gym.Env, CktGraph, DeviceParams):
                                 ]) - self.op_mean)/self.op_std
         # it is not straightforward to extract resistance info from sky130 resistor, using the following approximation instead
         # normalize all passive components
-        self.OP_C0_norm = ActionNormalizer(action_space_low=self.C0_low, action_space_high=self.C0_high).reverse_action(self.op_results['C0']['c']) # convert to (-1, 1)
-        self.OP_C1_norm = ActionNormalizer(action_space_low=self.C1_low, action_space_high=self.C1_high).reverse_action(self.op_results['C1']['c']) # convert to (-1, 1)
+        self.OP_C0_norm = ActionNormalizer(self.CktGraph.C0_low, self.CktGraph.C0_high).reverse_action(self.op_results['C0']['c']) # convert to (-1, 1)
+        self.OP_C1_norm = ActionNormalizer(self.CktGraph.C1_low, self.CktGraph.C1_high).reverse_action(self.op_results['C1']['c']) # convert to (-1, 1)
         
         # state shall be in the order of node (node0, node1, ...)
         observation = np.array([

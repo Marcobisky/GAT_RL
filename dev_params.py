@@ -8,7 +8,7 @@ You can just run it once to generate the script for the DCOP analysis.
 
 """
 
-from ckt_graphs import  GraphLDOtestbench, GraphAMPNMCF
+from ckt_graphs import  GraphAMPNMCF
 
 class DeviceParams(object):
     def __init__(self, ckt_hierarchy, warning_msg=False):
@@ -293,12 +293,13 @@ class DeviceParams(object):
 
             
 if __name__ == '__main__':
-    ckt_hierarchy = GraphLDOtestbench().ckt_hierarchy      
-    dev_params_script = DeviceParams(ckt_hierarchy).gen_dev_params(file_name='LDO_TB_op')
-    
-    with open('simulations/LDO_TB_dev_params.spice', 'w') as f:
-        for line in dev_params_script:
-            f.write(f'{line}\n')    
+    # Note: GraphLDOtestbench not available, skipping LDO generation
+    # ckt_hierarchy = GraphLDOtestbench().ckt_hierarchy      
+    # dev_params_script = DeviceParams(ckt_hierarchy).gen_dev_params(file_name='LDO_TB_op')
+    # 
+    # with open('simulations/LDO_TB_dev_params.spice', 'w') as f:
+    #     for line in dev_params_script:
+    #         f.write(f'{line}\n')    
 
     ckt_hierarchy = GraphAMPNMCF().ckt_hierarchy      
     dev_params_script = DeviceParams(ckt_hierarchy).gen_dev_params(file_name='AMP_NMCF_op')

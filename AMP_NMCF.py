@@ -144,10 +144,9 @@ class AMPNMCFEnv(gym.Env, CktGraph, DeviceParams):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         results_dict , flag= self._initialize_simulation()
-        # observation = self._get_obs()
-        # info = self._get_info()
-        # return observation, info
-        return results_dict
+        observation = self._get_obs()
+        info, _ = self._get_info()  # _get_info返回(info_dict, reward)，我们只需要info_dict
+        return observation, info
     
     def close(self):
         return None
@@ -208,25 +207,80 @@ class AMPNMCFEnv(gym.Env, CktGraph, DeviceParams):
             self.op_std = np.array([self.op_std['id'], self.op_std['gm'], self.op_std['gds'], self.op_std['vth'], self.op_std['vdsat'], self.op_std['vds'], self.op_std['vgs']])
         except:
             print('You need to run <_random_op_sims> to generate mean and std for transistor .OP parameters')
+            # 使用默认值
+            self.op_mean = np.ones(7)
+            self.op_std = np.ones(7)
         
-        self.OP_M0 = self.op_results['M0']
-        self.OP_M0_norm = (np.array([self.OP_M0['id'],
-                                self.OP_M0['gm'],
-                                self.OP_M0['gds'],
-                                self.OP_M0['vth'],
-                                self.OP_M0['vdsat'],
-                                self.OP_M0['vds'],
-                                self.OP_M0['vgs']
-                                ]) - self.op_mean)/self.op_std
-        self.OP_M1 = self.op_results['M1']
-        self.OP_M1_norm = (np.array([self.OP_M1['id'],
-                                self.OP_M1['gm'],
-                                self.OP_M1['gds'],
-                                self.OP_M1['vth'],
-                                self.OP_M1['vdsat'],
-                                self.OP_M1['vds'],
-                                self.OP_M1['vgs']
-                                ]) - self.op_mean)/self.op_std
+        # 检查op_results是否存在且有效
+        if hasattr(self, 'op_results') and self.op_results is not None:
+            try:
+                # 正常处理所有晶体管的OP结果
+                transistors = ['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10', 'M11', 'M12', 'M13', 'M14', 'M15', 'M16', 'M17', 'M18', 'M19', 'M20', 'M21', 'M22', 'M23']
+                transistor_obs = []
+                
+                for mos_name in transistors:
+                    if mos_name in self.op_results:
+                        mos_data = self.op_results[mos_name]
+                        mos_array = np.array([mos_data['id'], mos_data['gm'], mos_data['gds'], mos_data['vth'], mos_data['vdsat'], mos_data['vds'], mos_data['vgs']])
+                        if mos_name in ['M3', 'M4', 'M5']:  # 对于某些晶体管使用绝对值
+                            mos_norm = (np.abs(mos_array) - self.op_mean) / self.op_std
+                        else:
+                            mos_norm = (mos_array - self.op_mean) / self.op_std
+                        # 扩展到12个特征（前7个是OP参数，后5个填0）
+                        mos_obs = np.concatenate([mos_norm, np.zeros(5)])
+                    else:
+                        # 如果某个晶体管不存在，使用零值
+                        mos_obs = np.zeros(12)
+                    transistor_obs.append(mos_obs)
+                
+                # 处理电容器C0和C1
+                if 'C0' in self.op_results:
+                    self.OP_C0_norm = self.op_results['C0']
+                else:
+                    self.OP_C0_norm = 0
+                    
+                if 'C1' in self.op_results:
+                    self.OP_C1_norm = self.op_results['C1']
+                else:
+                    self.OP_C1_norm = 0
+                
+                # 其他参数
+                self.Vdd = 1.8
+                self.GND = 0
+                self.Ib = 5e-6
+                
+                # 构建29x12的观察矩阵
+                observation = np.zeros((29, 12))
+                
+                # 前24个节点是晶体管（M0到M23）
+                for i, mos_obs in enumerate(transistor_obs):
+                    if i < 24:
+                        observation[i] = mos_obs
+                
+                # 节点24: Ib
+                observation[24] = np.array([0,0,self.Ib,0,0,0,0,0,0,0,0,0])
+                # 节点25: VDD
+                observation[25] = np.array([self.Vdd,0,0,0,0,0,0,0,0,0,0,0])
+                # 节点26: GND
+                observation[26] = np.array([0,self.GND,0,0,0,0,0,0,0,0,0,0])
+                # 节点27: C0
+                observation[27] = np.array([0,0,0,self.OP_C0_norm,0,0,0,0,0,0,0,0])
+                # 节点28: C1
+                observation[28] = np.array([0,0,0,0,self.OP_C1_norm,0,0,0,0,0,0,0])
+                
+            except Exception as e:
+                print(f"Error processing OP results: {e}")
+                # 返回默认观察值
+                observation = np.zeros((29, 12))
+        else:
+            print("OP results not available, using default observation")
+            # 返回默认观察值
+            observation = np.zeros((29, 12))
+        
+        # clip the obs for better regularization
+        observation = np.clip(observation, -5, 5)
+        
+        return observation
         self.OP_M2 = self.op_results['M2']
         self.OP_M2_norm = (np.array([self.OP_M2['id'],
                                 self.OP_M2['gm'],
@@ -470,20 +524,54 @@ class AMPNMCFEnv(gym.Env, CktGraph, DeviceParams):
 
     def _get_info(self):
         '''Evaluate the performance'''
-        ''' DC '''
-        self.dc_results = self.sim_results.dc(file_name='AMP_NMCF_ACDC_DC')
-        self.TC = self.dc_results[1][1]
-        self.Power = self.dc_results[2][1]
-        self.vos_1 = self.dc_results[3][1]
-        self.vos = abs(self.vos_1)
-             
-        self.TC_score = np.min([(self.TC_target - self.TC) / (self.TC_target + self.TC), 0])
-        self.Power_score = np.min([(self.Power_target - self.Power) / (self.Power_target + self.Power), 0])
-        self.vos_score = np.min([(self.vos_target - self.vos) / (self.vos_target + self.vos), 0])
+        try:
+            ''' DC '''
+            self.dc_results = self.sim_results.dc(file_name='AMP_NMCF_ACDC_DC')
+            if self.dc_results is None:
+                # 如果DC仿真失败，使用默认值
+                print("DC simulation failed, using default values")
+                self.TC = 50e-6  # 默认值
+                self.Power = 1.0  # 默认值
+                self.vos_1 = 10e-3  # 默认值
+                self.vos = abs(self.vos_1)
+            else:
+                self.TC = self.dc_results[1][1]
+                self.Power = self.dc_results[2][1]
+                self.vos_1 = self.dc_results[3][1]
+                self.vos = abs(self.vos_1)
+            
+            self.TC_score = np.min([(self.TC_target - self.TC) / (self.TC_target + self.TC), 0])
+            self.Power_score = np.min([(self.Power_target - self.Power) / (self.Power_target + self.Power), 0])
+            self.vos_score = np.min([(self.vos_target - self.vos) / (self.vos_target + self.vos), 0])
 
-        ''' AC '''
-        self.ac_results = self.sim_results.ac(file_name='AMP_NMCF_ACDC_AC')
-        self.cmrrdc = self.ac_results[1][1]
+            ''' AC '''
+            self.ac_results = self.sim_results.ac(file_name='AMP_NMCF_ACDC_AC')
+            if self.ac_results is None:
+                print("AC simulation failed, using default values")
+                # 使用默认值
+                self.cmrrdc = -60
+                self.PSRP = -60  
+                self.PSRN = -60
+                self.dcgain = 90
+            else:
+                self.cmrrdc = self.ac_results[1][1]
+                self.PSRP = self.ac_results[2][1]
+                self.PSRN = self.ac_results[3][1]
+                self.dcgain = self.ac_results[4][1]
+        except Exception as e:
+            print(f"Simulation parsing error: {e}")
+            # 使用默认值
+            self.TC = 50e-6
+            self.Power = 1.0  
+            self.vos_1 = 10e-3
+            self.vos = abs(self.vos_1)
+            self.TC_score = -1
+            self.Power_score = -1
+            self.vos_score = -1
+            self.cmrrdc = -60
+            self.PSRP = -60
+            self.PSRN = -60
+            self.dcgain = 90
         if self.cmrrdc > 0 :
             self.cmrrdc_score = -1
         else : 

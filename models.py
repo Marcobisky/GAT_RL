@@ -150,8 +150,9 @@ class ActorCriticPVTGAT:
             self.node_features_PVT = PVT_Graph.node_features
             self.pvt_graph = PVT_Graph
             
+            # 使用环境的特征维度而不是PVT的特征维度
             self.gat = ActorCriticPVTGAT.GATActor(
-                input_dim=self.node_features_PVT.shape[1],
+                input_dim=self.num_node_features,  # 使用环境的节点特征维度
                 hidden_dims=hidden_dims,
                 output_dim=self.action_dim,
                 heads=heads,
@@ -168,13 +169,13 @@ class ActorCriticPVTGAT:
                 state = state.reshape(1, state.shape[0], state.shape[1])
             
             batch_size = state.shape[0]
-            edge_index_PVT = self.edge_index_PVT
+            edge_index = self.edge_index  # 使用环境的边索引
             device = self.device
             actions = torch.tensor(()).to(device)
             
             for i in range(batch_size):
                 x = state[i]
-                action = self.gat(x, edge_index_PVT)
+                action = self.gat(x, edge_index)
                 action = action.reshape(1, -1)
                 actions = torch.cat((actions, action), axis=0)
             

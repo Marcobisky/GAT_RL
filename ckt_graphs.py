@@ -7,7 +7,6 @@ Here you define the graph for a circuit
 
 class GraphAMPNMCF:
     """                                                                                                                           
-
     node 0 : M0 , node 1 : M1 , node 2 : M2 , node 3 : M3 , node 4 : M4 , node 5 : M5
     node 6 : M6 , node 7 : M7 , node 8 : M8 , node 9 : M9 , node 10 : M10 , node 11 : M11
     node 12 : M12 , node 13 : M13 , node 14 : M14 , node 15 : M15 , node 16 : M16 , node17 : M17 ,
@@ -118,7 +117,7 @@ class GraphAMPNMCF:
         self.num_relations = 2
         self.num_nodes = 29
         self.num_node_features = 12
-        self.obs_shape = (self.num_nodes, self.num_node_features)
+        self.obs_shape = (self.num_nodes, self.num_node_features) # Observation Space
 
         """Select an action from the input state."""
 

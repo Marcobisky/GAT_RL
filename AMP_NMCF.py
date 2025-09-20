@@ -144,6 +144,11 @@ class AMPNMCFEnv(gym.Env, CktGraph, DeviceParams):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         results_dict , flag= self._initialize_simulation()
+        
+        # 确保sim_results存在，即使仿真失败也要创建
+        if not hasattr(self, 'sim_results') or self.sim_results is None:
+            self.sim_results = OutputParser2(self.CktGraph)
+            
         observation = self._get_obs()
         info, _ = self._get_info()  # _get_info返回(info_dict, reward)，我们只需要info_dict
         return observation, info
@@ -568,10 +573,14 @@ class AMPNMCFEnv(gym.Env, CktGraph, DeviceParams):
             self.TC_score = -1
             self.Power_score = -1
             self.vos_score = -1
+            
+            # 设置默认AC结果
             self.cmrrdc = -60
-            self.PSRP = -60
+            self.PSRP = -60  
             self.PSRN = -60
             self.dcgain = 90
+            
+        # 计算分数
         if self.cmrrdc > 0 :
             self.cmrrdc_score = -1
         else : 
@@ -579,7 +588,6 @@ class AMPNMCFEnv(gym.Env, CktGraph, DeviceParams):
             if self.cmrrdc < self.cmrrdc_target:
                 self.cmrrdc_score = 0
 
-        self.PSRP = self.ac_results[2][1]
         if self.PSRP > 0 :
             self.PSRP_score = -1
         else : 
@@ -587,7 +595,6 @@ class AMPNMCFEnv(gym.Env, CktGraph, DeviceParams):
             if self.PSRP < self.PSRP_target:
                 self.PSRP_score = 0
 
-        self.PSRN = self.ac_results[3][1]
         if self.PSRN > 0 :
             self.PSRN_score = -1
         else : 
@@ -595,17 +602,30 @@ class AMPNMCFEnv(gym.Env, CktGraph, DeviceParams):
             if self.PSRN < self.PSRN_target:
                 self.PSRN_score = 0
 
-        self.dcgain = self.ac_results[4][1]
         if self.dcgain > 0 :
-                
             self.dcgain_score = np.min([(self.dcgain - self.dcgain_target) / (self.dcgain + self.dcgain_target), 0])
-            self.GBW_PM_results = self.sim_results.GBW_PM(file_name='AMP_NMCF_ACDC_GBW_PM')
-            self.GBW = self.GBW_PM_results[1][1]
-            self.GBW_score = np.min([(self.GBW - self.GBW_target) / (self.GBW + self.GBW_target), 0])
-            self.FOMS = (self.GBW * 1e-6 * self.CL ) / self.Power
-            self.FOMS_score = np.min([(self.FOMS - self.FOMS_target) / (self.FOMS + self.FOMS_target), 0])
-
-            self.phase_margin = self.GBW_PM_results[2][1]
+            
+            # 只在仿真成功时计算这些值
+            try:
+                self.GBW_PM_results = self.sim_results.GBW_PM(file_name='AMP_NMCF_ACDC_GBW_PM')
+                if self.GBW_PM_results is not None:
+                    self.GBW = self.GBW_PM_results[1][1]
+                    self.GBW_score = np.min([(self.GBW - self.GBW_target) / (self.GBW + self.GBW_target), 0])
+                    self.FOMS = (self.GBW * 1e-6 * self.CL ) / self.Power
+                    self.FOMS_score = np.min([(self.FOMS - self.FOMS_target) / (self.FOMS + self.FOMS_target), 0])
+                    self.phase_margin = self.GBW_PM_results[2][1]
+                else:
+                    self.GBW = 0
+                    self.GBW_score = -1
+                    self.FOMS = 0
+                    self.FOMS_score = -1
+                    self.phase_margin = 0
+            except:
+                self.GBW = 0
+                self.GBW_score = -1
+                self.FOMS = 0
+                self.FOMS_score = -1
+                self.phase_margin = 0
 
             # 相位裕度评分
             if self.phase_margin < 45 or self.phase_margin > 90:
@@ -634,25 +654,51 @@ class AMPNMCFEnv(gym.Env, CktGraph, DeviceParams):
             self.phase_margin_score = -1
       
         """ Tran """
-        self.tran_results = self.sim_results.tran(file_name='AMP_NMCF_Tran')
-        self.sr_rise = self.tran_results[1][1]
-        self.sr_fall = self.tran_results[2][1]
-        self.sr = (self.sr_rise + self.sr_fall) / 2 
-        self.sr_score = np.min([(self.sr - self.sr_target) / (self.sr + self.sr_target), 0])
-        self.FOML = ( self.sr * self.CL )/self.Power
-        self.FOML_score = np.min([(self.FOML - self.FOML_target) / (self.FOML + self.FOML_target), 0])
+        try:
+            self.tran_results = self.sim_results.tran(file_name='AMP_NMCF_Tran')
+            if self.tran_results is not None:
+                self.sr_rise = self.tran_results[1][1]
+                self.sr_fall = self.tran_results[2][1]
+                self.sr = (self.sr_rise + self.sr_fall) / 2 
+                self.sr_score = np.min([(self.sr - self.sr_target) / (self.sr + self.sr_target), 0])
+                self.FOML = ( self.sr * self.CL )/self.Power
+                self.FOML_score = np.min([(self.FOML - self.FOML_target) / (self.FOML + self.FOML_target), 0])
+            else:
+                self.sr_rise = 1.0
+                self.sr_fall = 1.0
+                self.sr = 1.0
+                self.sr_score = -1
+                self.FOML = 0
+                self.FOML_score = -1
+        except:
+            self.sr_rise = 1.0
+            self.sr_fall = 1.0
+            self.sr = 1.0
+            self.sr_score = -1
+            self.FOML = 0
+            self.FOML_score = -1
 
         """ setting_time """
-        self.meas = {}
-        self.d0 = 0.01
-        # path = './benchmarks/TB_Amplifier_ACDC/'
-        self.time_data, self.vin_data, self.vout_data = self.sim_results.extract_tran_data(file_name='AMP_NMCF_tran.dat')
-        if self.time_data is None:
-            return None,None
-        self.d0_settle, self.d1_settle, self.d2_settle, self.stable, self.SR_p, self.settling_time_p, self.SR_n, self.settling_time_n = self.sim_results.analyze_amplifier_performance(self.vin_data, self.vout_data, self.time_data, self.d0)
-        self.d0_settle = abs(self.d0_settle)
-        self.d1_settle = abs(self.d1_settle)
-        self.d2_settle = abs(self.d2_settle)
+        try:
+            self.meas = {}
+            self.d0 = 0.01
+            # path = './benchmarks/TB_Amplifier_ACDC/'
+            self.time_data, self.vin_data, self.vout_data = self.sim_results.extract_tran_data(file_name='AMP_NMCF_tran.dat')
+            if self.time_data is None:
+                return None,None
+            self.d0_settle, self.d1_settle, self.d2_settle, self.stable, self.SR_p, self.settling_time_p, self.SR_n, self.settling_time_n = self.sim_results.analyze_amplifier_performance(self.vin_data, self.vout_data, self.time_data, self.d0)
+            self.d0_settle = abs(self.d0_settle)
+            self.d1_settle = abs(self.d1_settle)
+            self.d2_settle = abs(self.d2_settle)
+        except:
+            self.d0_settle = 0.1
+            self.d1_settle = 0.1
+            self.d2_settle = 0.1
+            self.stable = False
+            self.SR_p = 1.0
+            self.settling_time_p = 1e-6
+            self.SR_n = 1.0
+            self.settling_time_n = 1e-6
         self.SR_n = abs(self.SR_n)
         self.SR_p = abs(self.SR_p)
         self.settlingTime_p = abs(self.settling_time_p)
